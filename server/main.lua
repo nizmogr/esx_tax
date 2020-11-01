@@ -1,82 +1,122 @@
 ESX = nil
+local waitingForPlayers = true
 
 TriggerEvent('esx:getSharedObject', function(obj) ESX = obj end)
 
-function GetUsersForTax(d, h, m)
-  MySQL.ready(function()
-  MySQL.Async.fetchAll('SELECT * FROM users',{},function(AllUser)
-  RunTax(AllUser)
-  end)
-  end)
+function GetUsersForTax()
+    while not ESX do
+        Wait(1000)
+    end
+    local AllUser = ESX.GetPlayers()
+    if #AllUser > 0 then
+        RunTax(AllUser)
+    else
+        print("Waiting for user to join")
+        waitingForPlayers = true
+    end
 end
+
+AddEventHandler('esx:playerLoaded', function()
+    if waitingForPlayers then
+        waitingForPlayers = false
+        print("User joined. Resuming taxing.")
+        Wait(Config.TaxInterval)
+        GetUsersForTax()
+    end
+end)
 
 -- Bank Taxing
 function BankTax(AllUser)
-  local tax = nil
-  for i=1 , #AllUser,1 do
-    if (json.decode(AllUser[i].accounts).bank <= Config.HoboClassLimit) then --Hobo Class
-      tax = 0
-    elseif (json.decode(AllUser[i].accounts).bank < Config.PoorClassLimit) then --Poor Class
-      local taxpercent = Config.PoorClassTax
-      tax = (json.decode(AllUser[i].accounts).bank*taxpercent) / 1000
-    elseif (json.decode(AllUser[i].accounts).bank < Config.LowerClassLimit) then --Lower Class
-      local taxpercent = Config.LowerClassTax
-      tax = (json.decode(AllUser[i].accounts).bank*taxpercent) / 1000
-    elseif (json.decode(AllUser[i].accounts).bank < Config.LowerMiddleClassLimit) then --Lower Middle Class
-      local taxpercent = Config.LowerMiddleClassTax
-      tax = (json.decode(AllUser[i].accounts).bank*taxpercent) / 1000
-    elseif (json.decode(AllUser[i].accounts).bank < Config.MiddleClassLimit) then --Middle Class
-      local taxpercent = Config.MiddleClassTax
-      tax = (json.decode(AllUser[i].accounts).bank*taxpercent) / 1000
-    elseif (json.decode(AllUser[i].accounts).bank < Config.UpperMiddleClassLimit) then --Upper Middle Class
-      local taxpercent = Config.UpperMiddleClassTax
-      tax = (json.decode(AllUser[i].accounts).bank*taxpercent) / 1000
-    elseif (json.decode(AllUser[i].accounts).bank < Config.LowerHigherClassLimit) then --Lower Higher Class
-      local taxpercent = Config.LowerHigherClassTax
-      tax = (json.decode(AllUser[i].accounts).bank*taxpercent) / 1000
-    elseif  (json.decode(AllUser[i].accounts).bank < Config.HigherClassLimit) then --Higher Class
-      local taxpercent = Config.HigherClassTax
-      tax = (json.decode(AllUser[i].accounts).bank*taxpercent) / 1000
-    else --Upper Higher Class
-      local taxpercent = Config.UpperHigherClassTax
-      tax = (json.decode(AllUser[i].accounts).bank*taxpercent) / 1000
-    end
-    local xPlayer = ESX.GetPlayerFromIdentifier(AllUser[i].identifier)
-    if(xPlayer ~= nil) then
-      if tax ~= 0 then
-        TriggerClientEvent('tax:sendTax', xPlayer.source, xPlayer.source, 'Banking Tax', ESX.Math.Round(tax))
-      end
-    end
-  end
+    for i=1 , #AllUser,1 do
+        local xPlayer = ESX.GetPlayerFromId(AllUser[i])
+        local bank = xPlayer.getAccount("bank").money
+        local tax = 0
+
+        if (bank > Config.HoboClassLimit) and (bank < Config.PoorClassLimit) then --Poor Class
+            local taxpercent = Config.PoorClassTax 
+            tax = (bank*taxpercent) / 1000 
+        elseif (bank < Config.LowerClassLimit) then --Lower Class
+            local taxpercent = Config.LowerClassTax 
+            tax = (bank*taxpercent) / 1000 
+        elseif (bank < Config.LowerMiddleClassLimit) then --Lower Middle Class
+            local taxpercent = Config.LowerMiddleClassTax 
+            tax = (bank*taxpercent) / 1000 
+        elseif (bank < Config.MiddleClassLimit) then --Middle Class
+            local taxpercent = Config.MiddleClassTax 
+            tax = (bank*taxpercent) / 1000
+        elseif (bank < Config.UpperMiddleClassLimit) then --Upper Middle Class
+            local taxpercent = Config.UpperMiddleClassTax 
+            tax = (bank*taxpercent) / 1000
+        elseif (bank < Config.LowerHigherClassLimit) then --Lower Higher Class
+            local taxpercent = Config.LowerHigherClassTax 
+            tax = (bank*taxpercent) / 1000
+        elseif  (bank < Config.HigherClassLimit) then --Higher Class
+            local taxpercent = Config.HigherClassTax 
+            tax = (bank*taxpercent) / 1000
+        else
+            local taxpercent = Config.UpperHigherClassTax 
+            tax = (bank*taxpercent) / 1000
+        end
+        if(xPlayer ~= nil) then 
+            if tax ~= 0 then                 
+                TriggerClientEvent('tax:sendTax', xPlayer.source, xPlayer.source, 'Banking Tax', ESX.Math.Round(tax))  
+            end         
+        end
+    end 
 end
 
 -- Car Taxing
-function CarsTax(AllUser)
-  MySQL.Async.fetchAll('SELECT * FROM owned_vehicles',{},function(AllCars)
-  local taxMultiplier = Config.CarTax
-  for i=1 , #AllUser,1 do
-    local carCount = 0
-    for a=1 , #AllCars,1 do
-      if AllUser[i].identifier == AllCars[a].owner and (AllCars[a].job ~= 'police' and AllCars[a].job ~= 'ambulance') then
-        carCount = carCount + 1
-      end
-    end
-    if carCount > 0 then
-      local tax = carCount * taxMultiplier
-      local xPlayer = ESX.GetPlayerFromIdentifier(AllUser[i].identifier)
-      if(xPlayer ~= nil) then
-        TriggerClientEvent('tax:sendTax', xPlayer.source, xPlayer.source, 'Car Tax', ESX.Math.Round(tax))
-      end
-    end
-  end
-  end)
+function CarsTax(AllUser)     
+    MySQL.Async.fetchAll('SELECT * FROM owned_vehicles',{},function(AllCars)
+        local taxMultiplier = Config.CarTax
+        for i=1, #AllUser, 1 do 
+            local xPlayer = ESX.GetPlayerFromId(AllUser[i])
+            local carCount = 0
+            for a=1 , #AllCars,1 do
+                if xPlayer.getIdentifier() == AllCars[a].owner and (AllCars[a].job ~= 'police' and AllCars[a].job ~= 'ambulance') then
+                    carCount = carCount + 1
+                end
+            end
+            if carCount > 0 then
+                local tax = carCount * taxMultiplier
+                if(xPlayer ~= nil) then                     
+                    TriggerClientEvent('tax:sendTax', xPlayer.source, xPlayer.source, 'Car Tax', ESX.Math.Round(tax))  
+                end
+            end            
+        end
+    end)
+end
+
+--Property Taxing
+function PropertiesTax(AllUser)     
+    MySQL.Async.fetchAll('SELECT * FROM owned_properties',{},function(AllProperties)
+        local taxMultiplier = Config.PropertyTax
+        for i=1, #AllUser, 1 do 
+            local xPlayer = ESX.GetPlayerFromId(AllUser[i])
+            local propertyCount = 0
+            for a=1 , #AllProperties,1 do
+                if xPlayer.getIdentifier() == AllProperties[a].owner and AllProperties[a].rented ~= 1 then
+                    propertyCount = propertyCount + 1
+                end
+            end
+            if propertyCount > 0 then
+                local tax = propertyCount * taxMultiplier
+                if(xPlayer ~= nil) then
+                    TriggerClientEvent('tax:sendTax', xPlayer.source, xPlayer.source, 'Property Tax', ESX.Math.Round(tax))
+                end
+            end            
+        end
+    end)
 end
 
 function RunTax(AllUser)
-  BankTax(AllUser)
-  CarsTax(AllUser)
-  Wait(Config.TaxInterval)
-  GetUsersForTax()
+    BankTax(AllUser)
+    CarsTax(AllUser)
+    PropertiesTax(AllUser)
+    Wait(Config.TaxInterval)
+    GetUsersForTax()
 end
 
-GetUsersForTax()
+CreateThread(function()
+    GetUsersForTax()
+end)
